@@ -7,42 +7,56 @@ import json
 
 app = Flask(__name__)
 
+# get api key json
 with open('auth.json') as credentials:
 	data = json.load(credentials)
-
-google_api = data["googlemaps"]["key"]
-
-gmaps = googlemaps.Client(key=google_api)
+google_api_key = data["googlemaps"]["key"]
+gmaps = googlemaps.Client(key=google_api_key)
 
 @app.route("/sms", methods=['GET', 'POST'])
 def sms_reply():
 	# user texts have to come in the form 
-	# from: 1234 Main Street - to: 2345 Main Ave
+	# from: 1234 Main Street - to: 2345 Main Ave - mode: driving
 
 	# parse user input
 	user_body = request.form.get('Body').split('-')
 	user_from_address = user_body[0][5:-1]
-	user_to_address = user_body[1][4: ]	
+	user_to_address = user_body[1][4:]	
+	user_mode_transport = ''
+
+	# check if user specified mode
+	try:
+		user_mode_transport = user_body[2][7:]
+		user_mode_transport.replace(" ", "")
+	except IndexError:
+		pass
 
 	# get google maps directions
 	now = datetime.now()
-	directions_result = gmaps.directions(user_from_address, user_to_address,departure_time=now)
+	try:
+		directions_result = gmaps.directions(user_from_address, user_to_address,mode=user_mode_transport.replace(" ", ""), departure_time=now)
+	except googlemaps.exceptions.ApiError:
+		resp = MessagingResponse()
+		resp.message("No directions found. Are you sure you formatted the request correctly?")
+		return str(resp)
 
+	# get the leg/steps of the route
 	driving_steps = directions_result[0]['legs'][0]['steps']
-
 	if(len(driving_steps) > 25):
-		return 'The directions you requested exceeds text limits, we are unable to serve this. '
+		resp = MessagingResponse()
+		resp.message('The directions you requested exceeds text limits, we are unable to serve this. ')
+		return str(resp)
 
 	response_body = ''
-
 	step_counter = 1
-	# prepare directions in a long string body
+
+	# iterate through each leg/step of the route
 	for i in range(len(driving_steps)):
 		distance = driving_steps[i]['distance']['text']
 		instruction = driving_steps[i]['html_instructions']
 		instruction = re.sub('<[^<]+?>', '', instruction)
 
-		# figure out how to phrase the instruction gramatically (very rough implementation)
+		# figure out how to phrase the instruction gramatically (very rough parsing)
 		grammar = instruction.split(' ')[0]
 
 		if grammar == 'Turn' or grammar == 'Merge' or grammar == 'Take' or grammar == 'Slight':
@@ -56,9 +70,7 @@ def sms_reply():
 		step_counter += 1
 
 	resp = MessagingResponse()
-
 	resp.message(response_body)
-
 	return str(resp)
 
 if __name__ == '__main__':

@@ -19,10 +19,12 @@ def sms_reply():
 	# user texts have to come in the form 
 	# from: 1234 Main Street - to: 2345 Main Ave
 
+	# parse user input
 	user_body = request.form.get('Body').split('-')
 	user_from_address = user_body[0][5:-1]
 	user_to_address = user_body[1][4: ]	
 
+	# get google maps directions
 	now = datetime.now()
 	directions_result = gmaps.directions(user_from_address, user_to_address,departure_time=now)
 
@@ -34,6 +36,7 @@ def sms_reply():
 	response_body = ''
 
 	step_counter = 1
+	# prepare directions in a long string body
 	for i in range(len(driving_steps)):
 		distance = driving_steps[i]['distance']['text']
 		instruction = driving_steps[i]['html_instructions']
